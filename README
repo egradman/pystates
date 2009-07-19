@@ -1,0 +1,79 @@
+pystates - A simple and powerful python state machine framework using coroutines
+
+Sometimes, a state machine is just what you need.  State machines are
+conceptually simple, but make for ugly code in any language.  Python suffers
+worse than other languages, as it lacks a select() statement.  The pystates
+module provides a simple framework that uses coroutines to implement resumable
+states.  And its easy on the eyes.
+
+To make a state machine, you will subclass the StateMachine class.  You can
+customize your subclass as needed; minimally you must implement your states as
+nested State subclasses.  Each State subclass must provide an eval() method
+(which must follow a particular structure) and optionally a leave() method.
+
+Look in examples/ for a documented example.
+
+A pystates StateMachine does not own a main loop.  You are responsible for your
+own main loop, and for resuming execution of the StateMachine by calling its
+handle() method.  This means you can have multiple StateMachines running in
+parallel, only being resumed when necessary.  When writing network or serial
+protocol readers for example, I have one StateMachine per file-descriptor, and
+I resume that machine when select() indicates its file-descriptor is readable.
+When writing game code in pygame, I have a StateMachine for every independently
+intelligent object, and I resume each StateMachine in the course of my pygame
+event loop.
+
+The eval method must have the same basic structure as the example.  It should
+perform any setup operations, then enter a while loop.  The first statement in
+the while loop should read "ev = yield".  This incantataion establishes the
+method as a "generator."  Whenever any function containing a yield statement is
+called, the function does not run immediately.  Instead, a generator object is
+immediately returned to the caller.  This generator object acts as a
+"coroutine," that is, a method whose execution can be paused and resumed while
+the rest of the program continues.
+
+What this means for you is that for the period of time during which your state
+machine is in a given state S, the eval() method of S will never return!
+Instead, it will hang out in "while" loop you've written.  Whenever that while
+loop reaches the "ev = yield" line, control will return to whoever called the
+machine's handle() method.  When the machines handle() method is next called
+with an event ev, the current state's eval method will resume, with ev now set
+equal to handle()'s ev argument.  You are then free to act on the contents of
+ev however you please, possibly by transition()'ing to a new state.
+
+A single State, therefore, doesn't generally need to use non-locally scoped
+variables as "memory."  However, when your machine transitions to a new state,
+the machine can use machine member variables (the machine is always accessible
+as self.m from inside a state) OR it can pass arguments to the target state.
+All args after the state name argument to transition() are passed to
+the eval() method of the newly transitioned-to state.
+
+Whenever a transition to a new state occurs, the State's leave() method is
+called (if it exists).  This allows you to include State cleanup code that's
+always run regardless of which state you're transitioning to.
+
+Sometimes its useful to make a transition when a given state has been running
+for a certain amount of time (such as in timeout scenarios).  For this reason,
+any state's eval() method can determine the length of time the state has been
+active by calling its duration() method.
+
+NIFTY TRICKS
+I often write modules to decode network or serial packets whose data payload is so large that the whole packets cannot be read in a single "read" call (nor would it be desirable to do so).  With pystates, its easy to write protocol decoders that are tolerant of incomplete reads.
+
+  # inside "READ_PACKET_HEADER" State
+  def eval(self, fd):
+    bytes = ""
+    while True:
+      ev = yield
+      bytes += fd.read(PACKET_HEADER_LEN)
+      if len(bytes) < PACKET_LEN:
+        continue
+      else:
+        ... decode bytes ...
+        self.transition("READ_PACKET_BODY")
+
+In essence, if your network link is unable to supply enough bytes to the READ_PACKET_HEADER state, then it simply pauses execution and returns control to the caller.  The caller is presumably in a select() loop.  When the fd is readable again, the main loop can resume the packet.
+
+In real life, this is a terribly inefficient way to read packets over the network.  You would use rewritable buffers with ctypes or numpy dtypes.
+
+

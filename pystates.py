@@ -21,51 +21,7 @@
 """
 pystates - A simple and powerful python state machine framework using coroutines
 
-Sometimes, a state machine is just what you need.  State machines are
-conceptually simple, but make for ugly code.  The pystates module provides a
-simple framework that uses coroutines to implement resumable states.  And its
-easy on the eyes.
-
-To make a state machine, you will subclass the StateMachine class.  You can
-customize your subclass as needed; minimally you must implement your states as
-nested State subclasses.  Each State subclass must provide an eval() method
-(which must follow a particular structure) and optionally a leave() method.
-
-Look in mymachine.py for a documented example.
-
-The eval method must have the same basic structure as the example.  It should
-perform any setup operations, then enter a while loop.  The first statement in
-the while loop should read "ev = yield".  This incantataion establishes the
-method as a "generator."  Whenever any function containing a yield statement is
-called, the function does not run immediately.  Instead, a generator object is
-immediately returned to the caller.  This generator object acts as a
-"coroutine," that is, a method whose execution can be paused and resumed while
-the rest of the program continues.
-
-What this means for you is that for the period of time during which your state
-machine is in a given state S, the eval() method of S will never return!
-Instead, it will hang out in "while" loop you've written.  Whenever that while
-loop reaches the "ev = yield" line, control will return to whoever called the
-machine's handle() method.  When the machines handle() method is next called
-with an event ev, the current state's eval method will resume, with ev now set
-equal to handle()'s ev argument.  You are then free to act on the contents of
-ev however you please, possibly by transition()'ing to a new state.
-
-A single State, therefore, doesn't generally need to use non-locally scoped
-variables as "memory."  However, when your machine transitions to a new state,
-the machine can use machine member variables (the machine is always accessible
-as self.m from inside a state) OR it can pass arguments to the target state.
-All args and kwargs after the state name argument to transition() are passed to
-the eval() method of the newly transitioned-to state.
-
-Whenever a transition to a new state occurs, the State's leave() method is
-called (if it exists).  This allows you to include State cleanup code that's
-always run regardless of which state you're transitioning to.
-
-Sometimes its useful to make a transition when a given state has been running
-for a certain amount of time (such as in timeout scenarios).  For this reason,
-any state's eval() method can determine the length of time the state has been
-active by calling its duration() method.
+See the README for a details on how to implement your own StateMachines
 """
 
 import time 
@@ -81,12 +37,12 @@ class StateMachine(object):
   def __init__(self, name=None, time=time.time, log=None):
     """
     Keyword arguments:
-      name: The name by which your state machine is known. It defaults to the name of
+      name: The name by which your StateMachine is known. It defaults to the name of
             the class
       time: An alternative function used to tell time.  For example, sometimes with
             pygame its useful to use pygame.ticks for consistency.  It defaults to
             time.time()
-      log:  If you supply a python logging object, your state machine will use it to
+      log:  If you supply a python logging object, your StateMachine will use it to
             log transitions.
     """
     self.name = name and name or str(self.__class__.__name__)
@@ -103,34 +59,36 @@ class StateMachine(object):
     except StopIteration, exc:
       self.state_gen = exc.args[0]
 
-  def start(self, state_name, *state_args, **state_kwargs):
+  def start(self, state_name, *state_args):
     """
     If this machine has a state named by the state_name argument, then the machine
     will activate the named state.  This is essentially a transition from a NULL
     state to the named state.
 
-    Any args and kwargs are passed to the eval method of the named state.
+    Any args are passed to the eval method of the named state.
     """
-    self.state_gen = self.activate_state(state_name, state_args, state_kwargs)
+    self.state_gen = self.activate_state(state_name, state_args)
 
-  def transition(self, state_name, *state_args, **state_kwargs):
+  def transition(self, state_name, state_args):
     """
     If this machine has a state named by the state_name argument, then the machine
     will transition to the named state.  The current state's leave() method will be
     called, if it exists.
 
-    Any args and kwargs are passed to the eval method of the named state.
+    Any args are passed to the eval method of the named state.
     """
-    state_gen = self.activate_state(state_name, state_args, state_kwargs)
+    state_gen = self.activate_state(state_name, state_args)
     raise StopIteration(state_gen)
 
-  def activate_state(self, state_name, state_args, state_kwargs):
+  def activate_state(self, state_name, state_args):
     self.log("%s activating state %s", str(self), state_name)
 
-    state_cls = getattr(self, state_name)
+    state_cls = getattr(self, state_name, None)
+    if state_cls is None:
+      raise NotImplementedError("state %s is not implemented" % state_name)
     state = state_cls(m=self)
     state.start_time = self.time()
-    state_gen = state.eval(*state_args, **state_kwargs)
+    state_gen = state.eval(*state_args)
     state_gen.next()
     return state_gen
 
@@ -148,7 +106,7 @@ class State(object):
     self.m = m
     self.name = self.__class__.__name__
 
-  def eval(self, *args, **kwargs):
+  def eval(self, *args):
     """
     Useful states override the eval method.  This method *must* have the structure:
       while True:
@@ -156,17 +114,15 @@ class State(object):
         ... do something based on the value of ev ...
         ... including possibly self.transition("NEW_STATE") ...
     """
-    self.m.log("State %s is not implemented", self.name)
-    while True:
-      ev = yield
+    raise NotImplementedError("State %s is not implemented" % self.name)
 
   def leave(self):
     """If implemented, this method is called as the machine transitions away"""
     pass
 
-  def transition(self, state_name, *state_args, **state_kwargs):
+  def transition(self, state_name, *state_args):
     self.leave()
-    self.m.transition(state_name, state_args, state_kwargs)
+    self.m.transition(state_name, state_args)
 
   def duration(self):
     return self.m.time() - self.start_time

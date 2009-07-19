@@ -6,7 +6,7 @@ from pystates import StateMachine, State
 class TestMachine(StateMachine):
   class STATE0(State):
     def eval(self, x=0):
-      self.m.log("x is %d", x)
+      self.m.log("x is " + str(x))
 
       while True:
         ev = yield
@@ -20,6 +20,7 @@ class TestMachine(StateMachine):
 
   class STATE1(State):
     def eval(self, x):
+      self.m.log("x is " + str(x))
       while True:
         ev = yield
         if ev['i'] % 5 == 0:
@@ -27,9 +28,11 @@ class TestMachine(StateMachine):
 
   class END(State):
     def eval(self):
+      self.m.log("waiting 5 seconds to start over")
       while True:
         ev = yield
         if self.duration() > 5:
+          self.m.log("timeout!")
           self.transition("STATE0", 0)
     def leave(self):
       self.m.log("starting over with x=0")
@@ -42,7 +45,7 @@ def main():
 
   i = 0
   while True:
-    time.sleep(0.5)
+    time.sleep(0.1)
     ev = dict(i=i)
     m.handle(ev)
     i += 1
