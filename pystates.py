@@ -21,7 +21,43 @@
 """
 pystates - A simple and powerful python state machine framework using coroutines
 
+Example:
+
+  from pystates import StateMachine, State
+
+  class MyMachine(StateMachine):
+    class IDLE(State):
+      def eval(self):
+        while True:
+          ev = yield
+          if ev.type == pygame.KEYDOWN:
+            self.transition("RUNNING", ev.key)
+
+    class RUNNING(State):
+      def eval(self, key):
+        print "you pressed the %s key" % key
+        while True:
+          ev = yield
+          if self.duration() > 5.0:
+            self.transition("COUNTDOWN")
+
+      def leave(self):
+        print "timeout!"
+
+    class COUNTDOWN(State):
+      def eval(self):
+        i = 10
+        while True:
+          ev = yield
+          print "i = %d" % i
+          if i == 0:
+            self.transition("IDLE")
+          i -= 1
+
+
+
 See the README for a details on how to implement your own StateMachines
+
 """
 
 import time 

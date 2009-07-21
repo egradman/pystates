@@ -41,10 +41,10 @@ with an event ev, the current state's eval method will resume, with ev now set
 equal to handle()'s ev argument.  You are then free to act on the contents of
 ev however you please, possibly by transition()'ing to a new state.
 
-A single State, therefore, doesn't generally need to use non-locally scoped
-variables as "memory."  However, when your machine transitions to a new state,
-the machine can use machine member variables (the machine is always accessible
-as self.m from inside a state) OR it can pass arguments to the target state.
+A single State, therefore, can use only locally scoped
+variables as "memory."  When your machine transitions to a new state,
+the machine can EITHER use machine member variables (the machine is always accessible
+as self.m from inside a state) OR it can pass arguments to the target state in the transition() call.
 All args after the state name argument to transition() are passed to
 the eval() method of the newly transitioned-to state.
 
@@ -58,22 +58,20 @@ any state's eval() method can determine the length of time the state has been
 active by calling its duration() method.
 
 NIFTY TRICKS
-I often write modules to decode network or serial packets whose data payload is so large that the whole packets cannot be read in a single "read" call (nor would it be desirable to do so).  With pystates, its easy to write protocol decoders that are tolerant of incomplete reads.
+I often write modules to decode network or serial packets whose data payload is sufficiently large that the whole packet cannot be read in a single "read" call (nor would it be desirable to do so).  With pystates, its easy to write protocol decoders that are tolerant of incomplete reads.
 
-  # inside "READ_PACKET_HEADER" State
-  def eval(self, fd):
-    bytes = ""
-    while True:
-      ev = yield
-      bytes += fd.read(PACKET_HEADER_LEN)
-      if len(bytes) < PACKET_LEN:
-        continue
-      else:
-        ... decode bytes ...
-        self.transition("READ_PACKET_BODY")
+  class READ_PACKET_HEADER(State):
+    def eval(self, fd):
+      bytes = ""
+      while True:
+        ev = yield
+        bytes += fd.read(PACKET_HEADER_LEN - len(bytes))
+        if len(bytes) < PACKET_HEADER_LEN:
+          continue
+        else:
+          ... decode bytes ...
+          self.transition("READ_PACKET_BODY")
 
 In essence, if your network link is unable to supply enough bytes to the READ_PACKET_HEADER state, then it simply pauses execution and returns control to the caller.  The caller is presumably in a select() loop.  When the fd is readable again, the main loop can resume the packet.
 
-In real life, this is a terribly inefficient way to read packets over the network.  You would use rewritable buffers with ctypes or numpy dtypes.
-
-
+[Note that in real life, decoding a packet by successively appending incoming bytes to a new string is a terribly inefficient way to do things.  I tend to use rewritable buffers with ctypes or numpy dtypes.  This is just an illustration.]
