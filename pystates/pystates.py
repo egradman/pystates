@@ -54,10 +54,7 @@ Example:
             self.transition("IDLE")
           i -= 1
 
-
-
 See the README for a details on how to implement your own StateMachines
-
 """
 
 import time 
