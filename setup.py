@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name          = "pystates",
-    version       = "0.4",
+    version       = "0.5",
     url           = "http://wiki.github.com/egradman/pystates",
     author        = "Eric Gradman",
     author_email  = "eric@gradman.com",

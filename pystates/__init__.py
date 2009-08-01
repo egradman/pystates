@@ -1,1 +1,1 @@
-from pystates import StateMachine, State, __doc__
+from pystates import StateMachine, __doc__

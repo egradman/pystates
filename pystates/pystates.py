@@ -26,12 +26,11 @@ Example:
   from pystates import StateMachine, State
 
   class MyMachine(StateMachine):
-    class IDLE(State):
-      def eval(self):
-        while True:
-          ev = yield
-          if ev.type == pygame.KEYDOWN:
-            self.transition("RUNNING", ev.key)
+    def IDLE(self):
+      while True:
+        ev = yield
+        if ev.type == pygame.KEYDOWN:
+          self.transition("RUNNING", ev.key)
 
     class RUNNING(State):
       def eval(self, key):
@@ -40,9 +39,6 @@ Example:
           ev = yield
           if self.duration() > 5.0:
             self.transition("COUNTDOWN")
-
-      def leave(self):
-        print "timeout!"
 
     class COUNTDOWN(State):
       def eval(self):
@@ -88,76 +84,40 @@ class StateMachine(object):
     the supplied ev object.
     """
     try:
-      self.state_gen.send(ev)
+      return self.state_gen.send(ev)
     except StopIteration, exc:
       self.state_gen = exc.args[0]
 
-  def start(self, state_name, *state_args):
+  def start(self, state_func, *state_args):
     """
-    If this machine has a state named by the state_name argument, then the machine
+    If this machine has a state named by the state_func argument, then the machine
     will activate the named state.  This is essentially a transition from a NULL
     state to the named state.
 
     Any args are passed to the eval method of the named state.
     """
-    self.state_gen = self.activate_state(state_name, state_args)
+    self.state_gen = self.activate_state(state_func, state_args)
 
-  def transition(self, state_name, state_args):
+  def transition(self, state_func, *state_args):
     """
-    If this machine has a state named by the state_name argument, then the machine
-    will transition to the named state.  The current state's leave() method will be
-    called, if it exists.
+    If this machine has a state named by the state_func argument, then the machine
+    will transition to the named state.
 
-    Any args are passed to the eval method of the named state.
+    Any args are passed to the new state_func.
     """
-    state_gen = self.activate_state(state_name, state_args)
+    state_gen = self.activate_state(state_func, state_args)
     raise StopIteration(state_gen)
 
-  def activate_state(self, state_name, state_args):
-    self.log("%s activating state %s", str(self), state_name)
+  def activate_state(self, state_func, state_args):
+    self.log("%s activating state %s", str(self), state_func.__name__)
 
-    state_cls = getattr(self, state_name, None)
-    if state_cls is None:
-      raise NotImplementedError("state %s is not implemented" % state_name)
-    state = state_cls(m=self)
-    state.start_time = self.time()
-    state_gen = state.eval(*state_args)
-    state_gen.next()
+    self.state_start_time = self.time()
+    state_gen = state_func(*state_args)
+    #state_gen.next()
     return state_gen
+
+  def duration(self):
+    return self.time() - self.state_start_time
 
   def __str__(self):
     return "<StateMachine:%s>" % self.name
-
-class State(object):
-  """State
-  Do not instantiate this class directly.  Instead, make a subclass.  Your
-  subclass should contain an eval() method and optionally a leave() method.
-  """
-
-  def __init__(self, m):
-    """Do not override __init__ unless you know what you're doing"""
-    self.m = m
-    self.name = self.__class__.__name__
-
-  def eval(self, *args):
-    """
-    Useful states override the eval method.  This method *must* have the structure:
-      while True:
-        ev = yield
-        ... do something based on the value of ev ...
-        ... including possibly self.transition("NEW_STATE") ...
-    """
-    raise NotImplementedError("State %s is not implemented" % self.name)
-
-  def leave(self):
-    """If implemented, this method is called as the machine transitions away"""
-    pass
-
-  def transition(self, state_name, *state_args):
-    self.leave()
-    self.m.transition(state_name, state_args)
-
-  def duration(self):
-    return self.m.time() - self.start_time
-
-
